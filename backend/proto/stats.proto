@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package stats;
+
+option go_package = "github.com/BohdanKuzmenko1/URLShortener;proto";
+
+service StatsService {
+  rpc GetURLStats (GetURLStatsRequest) returns (GetURLStatsResponse);
+}
+
+message GetURLStatsRequest {
+  int32 url_id = 1;
+  string date = 2;
+}
+
+message GetURLStatsResponse {
+  repeated URLStats url_stats = 1;
+}
+
+message URLStats {
+  int32 url_id = 1;
+  string date = 2;
+  string device = 3;
+  string country = 4;
+  int32 clicks = 5;
+  int32 bot_clicks = 6;
+}

@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package url;
+
+option go_package = "github.com/BohdanKuzmenko1/URLShortener;proto";
+
+service URLService {
+  rpc CreateShortURL (CreateShortUrlRequest) returns (CreateShortUrlResponse);
+  rpc ResolveSlug (ResolveSlugRequest) returns (ResolveSlugResponse);
+  rpc GetURL (GetURLRequest) returns (GetURLResponse);
+}
+
+message GetURLRequest {
+  int32 url_id = 1;
+}
+
+message GetURLResponse {
+  ShortURL short_url = 1;
+}
+
+message CreateShortUrlRequest {
+  string target_url = 1;
+  string slug = 2;
+}
+
+message CreateShortUrlResponse {
+  string short_url = 1;
+}
+
+message ResolveSlugRequest {
+  URLServiceRedirect redirect = 1;
+}
+
+message ResolveSlugResponse {
+  string target_url = 1;
+}
+
+message ShortURL {
+  int32 url_id = 1;
+  string target_url = 2;
+  string slug = 3;
+  string created_at = 4;
+}
+
+message URLServiceRedirect {
+  string slug = 1;
+  string user_agent = 2;
+  string client_ip = 3;
+  string country = 4;
+  string referer = 5;
+  string language = 6;
+}

@@ -1,0 +1,187 @@
+version: '3.8'
+
+services:
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+    volumes:
+      - kafka_data:/kafka_data
+    networks:
+      - url-shortener-network
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: ""
+    depends_on:
+      - kafka
+    networks:
+      - url-shortener-network
+
+
+  postgres:
+    image: postgres:18.1-alpine3.22
+    container_name: url-shortener-db
+    environment:
+      POSTGRES_DB: urlshortener
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - url-shortener-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d urlshortener"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8.4.0-alpine
+    container_name: url-shortener-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - url-shortener-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrations:
+    image: migrate/migrate:latest
+    container_name: url-shortener-migrations
+    volumes:
+      - ./migrations:/migrations
+    command:
+      [
+        "-path", "/migrations",
+        "-database", "postgresql://user:password@postgres:5432/urlshortener?sslmode=disable",
+        "up"
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - url-shortener-network
+    restart: on-failure:1
+
+  url-service:
+    build:
+      context: ../../
+      dockerfile: backend/services/url-service/Dockerfile
+    container_name: url-service
+    ports:
+      - "50051:50051"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/urlshortener?sslmode=disable
+      - LOG_LEVEL=info
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - url-shortener-network
+    restart: unless-stopped
+
+  stats-service:
+    build:
+      context: ../../
+      dockerfile: backend/services/stats-service/Dockerfile
+    container_name: stats-service
+    ports:
+      - "50054:50054"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/urlshortener?sslmode=disable
+      - LOG_LEVEL=info
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - url-shortener-network
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: ../../
+      dockerfile: backend/services/auth-service/Dockerfile
+    container_name: auth-service
+    ports:
+      - "50052:50052"
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/urlshortener?sslmode=disable
+      - REDIS_URL=redis:6379
+      - LOG_LEVEL=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - url-shortener-network
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ../../
+      dockerfile: backend/services/api-gateway/Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8090:8090"
+    environment:
+      - URL_SERVICE_ADDRESS=url-service:50051
+      - AUTH_SERVICE_ADDRESS=auth-service:50052
+      - PORT=8090
+      - LOG_LEVEL=info
+    depends_on:
+      - url-service
+      - auth-service
+    networks:
+      - url-shortener-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
+
+networks:
+  url-shortener-network:
+    driver: bridge
