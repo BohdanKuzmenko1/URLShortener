@@ -3,6 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	pb "github.com/BohdanKuzmenko1/URLShortener/proto"
 	"github.com/BohdanKuzmenko1/URLShortener/services/stats-service/internal/broker"
 	"github.com/BohdanKuzmenko1/URLShortener/services/stats-service/internal/client"
@@ -14,21 +21,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
-	"log"
-	"net"
-	"os"
-	"time"
 )
 
 func main() {
-	go func() {
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			fmt.Println("Tick:", time.Now())
-		}
-	}()
 	if err := initConfig(); err != nil {
 		logrus.Fatalf("an error initializing configs: %s", err.Error())
 	}
@@ -44,9 +39,8 @@ func main() {
 		DBName:   viper.GetString("postgres.dbname"),
 		SSLMode:  viper.GetString("postgres.sslmode"),
 	})
-
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("failed to connect to database: %v", err)
 	}
 
 	lis, err := net.Listen("tcp", viper.GetString("stats-service.port"))
@@ -60,6 +54,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to URL service: %v", err)
 	}
+
 	statsService := service.NewStatsService(statsRepo, urlServiceClient)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -71,19 +66,36 @@ func main() {
 	}
 	defer consumer.Close()
 
-	go consumer.StartBatch(
-		ctx,
-		func(ctx context.Context, events []broker.RedirectEvent) error {
-			return statsService.RecordClickBatch(ctx, events)
-		},
-		500,                  // batchSize
-		100*time.Millisecond, // flushInterval
-	)
+	go func() {
+		consumer.StartBatch(
+			ctx,
+			func(ctx context.Context, events []broker.RedirectEvent) error {
+				dbCtx, dbCancel := context.WithTimeout(ctx, 5*time.Second)
+				defer dbCancel()
+
+				return statsService.RecordClickBatch(dbCtx, events)
+			},
+			500,
+			100*time.Millisecond,
+		)
+		log.Println("Kafka consumer stopped")
+	}()
 
 	s := grpc.NewServer()
 	pb.RegisterStatsServiceServer(s, server.NewStatsServer(statsService))
 
-	log.Println(fmt.Sprintf("Stats Service NEW is running on port %s...", viper.GetString("stats-service-new.port")))
+	// Graceful shutdown: on SIGTERM or SIGINT, cancel the context
+	// to stop the Kafka consumer and wait for in-flight gRPC requests to complete.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		sig := <-quit
+		log.Printf("received signal: %s, shutting down...", sig)
+		cancel()
+		s.GracefulStop()
+	}()
+
+	log.Println(fmt.Sprintf("Stats Service is running on port %s...", viper.GetString("stats-service.port")))
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
