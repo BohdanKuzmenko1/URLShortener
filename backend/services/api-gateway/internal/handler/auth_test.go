@@ -617,7 +617,12 @@ func TestAuthService_Logout(t *testing.T) {
 			router.ServeHTTP(w, req)
 
 			resp := w.Result()
-			defer resp.Body.Close()
+			defer func(Body io.ReadCloser) {
+				err := Body.Close()
+				if err != nil {
+					t.Errorf("error closing response body")
+				}
+			}(resp.Body)
 
 			assert.Equal(t, tt.expectedStatusCode, resp.StatusCode)
 

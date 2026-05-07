@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	lruTTL          = 30 * time.Minute
+	lruTTL          = 10 * time.Minute
 	lruSize         = 1_000
 	eventWorkers    = 20
 	eventBufferSize = 10_000

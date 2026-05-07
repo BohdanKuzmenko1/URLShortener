@@ -3,23 +3,25 @@ package repository
 import (
 	"context"
 	"fmt"
-	internal2 "github.com/BohdanKuzmenko1/URLShortener/services/stats-service/internal"
+	"github.com/BohdanKuzmenko1/URLShortener/services/stats-service/internal"
 	"github.com/jmoiron/sqlx"
 	"strings"
 	"time"
 )
 
 type StatsRepository interface {
-	RecordClick(ctx context.Context, click internal2.Click) error
-	RecordClickBatch(ctx context.Context, clicks []internal2.Click) error
-	GetURLStats(ctx context.Context, URLId int32, date string) ([]internal2.URLStats, error)
+	RecordClick(ctx context.Context, click internal.Click) error
+	RecordClickBatch(ctx context.Context, clicks []internal.Click) error
+	GetURLStats(ctx context.Context, URLId int32, date string) ([]internal.URLStats, error)
 }
 
 type statsRepository struct {
 	db *sqlx.DB
 }
 
-func (s statsRepository) GetURLStats(ctx context.Context, URLId int32, date string) ([]internal2.URLStats, error) {
+// GetURLStats returns per-day click statistics for a given URL filtered by date.
+// Each row in the result represents a unique (country, device) combination for that day.
+func (s statsRepository) GetURLStats(ctx context.Context, URLId int32, date string) ([]internal.URLStats, error) {
 	query := `
 	SELECT url_id, date, country, device, human_clicks, bot_clicks 
 	FROM url_stats 
@@ -31,10 +33,10 @@ func (s statsRepository) GetURLStats(ctx context.Context, URLId int32, date stri
 	}
 	defer rows.Close()
 
-	var stats []internal2.URLStats
+	var stats []internal.URLStats
 
 	for rows.Next() {
-		var stat internal2.URLStats
+		var stat internal.URLStats
 		err = rows.Scan(
 			&stat.URLId,
 			&stat.Date,
@@ -56,12 +58,20 @@ func (s statsRepository) GetURLStats(ctx context.Context, URLId int32, date stri
 	return stats, nil
 }
 
-func (s statsRepository) RecordClickBatch(ctx context.Context, clicks []internal2.Click) error {
+// RecordClickBatch writes a batch of clicks to url_stats in a single INSERT.
+// Before writing, clicks are aggregated in memory so that multiple clicks
+// sharing the same (url_id, date, country, device) are collapsed into one row,
+// reducing the number of VALUES clauses sent to the database.
+//
+// ON CONFLICT increments the existing counters instead of failing,
+// making the operation safe to retry on replay (at-least-once delivery from Kafka).
+func (s statsRepository) RecordClickBatch(ctx context.Context, clicks []internal.Click) error {
 	if len(clicks) == 0 {
 		return nil
 	}
 
-	// aggregation in memory before writing
+	// key identifies a unique dimension combination in url_stats.
+	// Clicks that share the same key are counted together before the INSERT.
 	type key struct {
 		URLId   int
 		Date    time.Time
@@ -69,6 +79,7 @@ func (s statsRepository) RecordClickBatch(ctx context.Context, clicks []internal
 		Device  string
 	}
 
+	// aggregated maps each unique key to [humanClicks, botClicks] counters.
 	aggregated := make(map[key][2]int) // [humanClicks, botClicks]
 	for _, c := range clicks {
 		k := key{c.URLId, c.Date, c.Country, c.Device}
@@ -81,6 +92,8 @@ func (s statsRepository) RecordClickBatch(ctx context.Context, clicks []internal
 		aggregated[k] = counts
 	}
 
+	// placeholders holds one ($i, $i+1, ...) entry per aggregated row.
+	// args holds the corresponding values in the same order.
 	placeholders := make([]string, 0, len(aggregated))
 	args := make([]interface{}, 0, len(aggregated)*6)
 	i := 1
@@ -94,6 +107,11 @@ func (s statsRepository) RecordClickBatch(ctx context.Context, clicks []internal
 		i += 6
 	}
 
+	// The final query looks like:
+	//   INSERT INTO url_stats (...) VALUES ($1,...,$6), ($7,...,$12), ...
+	//   ON CONFLICT (...) DO UPDATE SET human_clicks = ... + EXCLUDED.human_clicks, ...
+	// EXCLUDED refers to the values we tried to insert, so existing counters
+	// are incremented rather than overwritten.
 	query := `
 		INSERT INTO url_stats (url_id, date, country, device, human_clicks, bot_clicks)
 		VALUES ` + strings.Join(placeholders, ", ") + `
@@ -107,8 +125,11 @@ func (s statsRepository) RecordClickBatch(ctx context.Context, clicks []internal
 	return err
 }
 
-// RecordClick Deprecated
-func (s statsRepository) RecordClick(ctx context.Context, click internal2.Click) error {
+// RecordClick inserts or increments stats for a single click.
+//
+// Deprecated: use RecordClickBatch for all new code.
+// This method performs one database round-trip per click, which is inefficient at scale.
+func (s statsRepository) RecordClick(ctx context.Context, click internal.Click) error {
 	query := `
         INSERT INTO url_stats (url_id, date, country, device, human_clicks, bot_clicks)
         VALUES ($1, $2, $3, $4, $5, $6)

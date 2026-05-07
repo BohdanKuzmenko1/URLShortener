@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha1"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"github.com/BohdanKuzmenko1/URLShortener/shared"
 	"github.com/golang-jwt/jwt"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 	"os"
 	"strconv"
 	"time"
@@ -68,47 +68,44 @@ func (a authService) Logout(ctx context.Context, refreshToken string) error {
 }
 
 // Login verifies user credentials and returns a token pair on success.
-// Returns an error if the credentials are invalid or the request failed.
+// Returns an error if the user is not found or the password is incorrect.
 func (a authService) Login(ctx context.Context, email, password string) (*shared.TokenPair, error) {
-	passwordHash := generatePasswordHash(password)
-
-	userId, err := a.repo.Login(ctx, email, passwordHash)
+	userId, storedHash, err := a.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
 
-	tokenPair, err := a.generateTokenPair(ctx, userId)
-	if err != nil {
-		return nil, err
+	if err := bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)); err != nil {
+		return nil, errors.New("invalid credentials")
 	}
 
-	return tokenPair, nil
+	return a.generateTokenPair(ctx, userId)
 }
 
-// Register creates a new user account and returns a token pair on success.
+// Register creates a new user account with a bcrypt-hashed password and returns a token pair on success.
 // Returns an error if the email already exists or the request failed.
 func (a authService) Register(ctx context.Context, email, password string) (*shared.TokenPair, error) {
-	passwordHash := generatePasswordHash(password)
+	passwordHash, err := generatePasswordHash(password)
+	if err != nil {
+		return nil, err
+	}
 
 	userId, err := a.repo.Register(ctx, email, passwordHash)
 	if err != nil {
 		return nil, err
 	}
 
-	tokenPair, err := a.generateTokenPair(ctx, userId)
-	if err != nil {
-		return nil, err
-	}
-
-	return tokenPair, nil
+	return a.generateTokenPair(ctx, userId)
 }
 
-// generatePasswordHash returns a SHA1 hash of the password salted with SALT_PASSWORD_HASHING env variable.
-func generatePasswordHash(password string) string {
-	hash := sha1.New()
-	hash.Write([]byte(password))
-
-	return fmt.Sprintf("%x", hash.Sum([]byte(os.Getenv("SALT_PASSWORD_HASHING"))))
+// generatePasswordHash returns a bcrypt hash of the given password.
+// Returns an error if hashing fails.
+func generatePasswordHash(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(bytes), nil
 }
 
 // generateTokenPair creates a new access and refresh token pair for the given user ID,

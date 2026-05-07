@@ -8,7 +8,7 @@ import (
 
 // AuthRepository interface with functions to create and verify user
 type AuthRepository interface {
-	Login(ctx context.Context, email, passwordHash string) (int, error)
+	GetUserByEmail(ctx context.Context, email string) (int, string, error)
 	Register(ctx context.Context, email, passwordHash string) (int, error)
 }
 
@@ -17,20 +17,20 @@ type authRepository struct {
 	db *sqlx.DB
 }
 
-// Login verifies user credentials against the database records.
-// Returns the user ID on success, or 0 and an error if the credentials
-// are invalid or the database request failed.
-func (a authRepository) Login(ctx context.Context, email, passwordHash string) (int, error) {
-	var id int
-
-	query := fmt.Sprintf("SELECT id FROM %s WHERE email=$1 AND password=$2", usersTable)
-
-	err := a.db.GetContext(ctx, &id, query, email, passwordHash)
-	if err != nil {
-		return 0, err
+func (a authRepository) GetUserByEmail(ctx context.Context, email string) (int, string, error) {
+	var user struct {
+		ID           int    `db:"id"`
+		PasswordHash string `db:"password"`
 	}
 
-	return id, nil
+	query := fmt.Sprintf("SELECT id, password FROM %s WHERE email=$1", usersTable)
+
+	err := a.db.GetContext(ctx, &user, query, email)
+	if err != nil {
+		return 0, "", err
+	}
+
+	return user.ID, user.PasswordHash, nil
 }
 
 // Register creates a new user with the provided email and password hash.
