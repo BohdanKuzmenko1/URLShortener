@@ -57,5 +57,8 @@ func newConn(addr string) (*grpc.ClientConn, error) {
 	if addr == "" {
 		return nil, errors.New("address must not be empty")
 	}
+
+	// insecure is acceptable for internal service-to-service
+	// communication within a private Docker network.
 	return grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 }

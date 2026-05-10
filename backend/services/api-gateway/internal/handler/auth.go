@@ -84,7 +84,11 @@ func (h *Handler) Register(c *gin.Context) {
 		Password: req.Password,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logrus.WithFields(logrus.Fields{
+			"email": req.Email,
+			"error": err.Error(),
+		}).Error("failed to register user")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "something went wrong"})
 		return
 	}
 
@@ -175,7 +179,7 @@ func (h *Handler) Logout(c *gin.Context) {
 	})
 
 	if err != nil {
-		logrus.Error(err)
+		logrus.WithError(err).Warn("failed to invalidate refresh token on logout")
 	}
 
 	c.SetCookie(

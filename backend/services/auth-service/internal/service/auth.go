@@ -33,15 +33,17 @@ type Auth interface {
 }
 
 type authService struct {
-	repo  repository.AuthRepository
-	redis *redis.Client
+	repo       repository.AuthRepository
+	redis      *redis.Client
+	signingKey []byte
 }
 
 // NewAuthService returns a new Auth service backed by the given repository and Redis client.
 func NewAuthService(repo repository.AuthRepository, redisClient *redis.Client) Auth {
 	return &authService{
-		repo:  repo,
-		redis: redisClient,
+		repo:       repo,
+		redis:      redisClient,
+		signingKey: []byte(os.Getenv("JWT_SIGNING_KEY")),
 	}
 }
 
@@ -116,7 +118,10 @@ func (a authService) generateTokenPair(ctx context.Context, userId int) (*shared
 		return nil, err
 	}
 
-	refreshToken := a.generateRefreshToken()
+	refreshToken, err := a.generateRefreshToken()
+	if err != nil {
+		return nil, err
+	}
 
 	err = a.saveRefreshToken(ctx, userId, refreshToken)
 	if err != nil {
@@ -132,14 +137,12 @@ func (a authService) generateTokenPair(ctx context.Context, userId int) (*shared
 }
 
 // generateRefreshToken returns a cryptographically random 32-byte hex-encoded token.
-func (a authService) generateRefreshToken() string {
+func (a authService) generateRefreshToken() (string, error) {
 	bytes := make([]byte, 32)
-	read, err := rand.Read(bytes)
-	if err != nil {
-		return ""
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate refresh token: %w", err)
 	}
-
-	return hex.EncodeToString(bytes[:read])
+	return hex.EncodeToString(bytes), nil
 }
 
 // generateAccessToken creates a signed JWT access token for the given user ID.
@@ -155,7 +158,7 @@ func (a authService) generateAccessToken(userId int) (string, error) {
 		userId,
 	})
 
-	return token.SignedString([]byte(os.Getenv("JWT_SIGNING_KEY")))
+	return token.SignedString(a.signingKey)
 }
 
 // saveRefreshToken stores the refresh token in Redis associated with the given user ID.

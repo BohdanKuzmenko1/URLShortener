@@ -1,38 +1,16 @@
-package handler
+package handler_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	pb "github.com/BohdanKuzmenko1/URLShortener/proto"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"google.golang.org/grpc"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
-
-type MockStatsServiceClient struct {
-	mock.Mock
-}
-
-func (m *MockStatsServiceClient) GetURLStats(ctx context.Context, in *pb.GetURLStatsRequest, opts ...grpc.CallOption) (*pb.GetURLStatsResponse, error) {
-	args := m.Called(ctx, in)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*pb.GetURLStatsResponse), args.Error(1)
-}
-
-func setupStatsTestHandler() (*Handler, *MockStatsServiceClient) {
-	mockURLClient := new(MockUrlServiceClient)
-	mockAuthClient := new(MockAuthServiceClient)
-	mockStatsClient := new(MockStatsServiceClient)
-	handler := NewHandler(mockURLClient, mockAuthClient, mockStatsClient)
-	return handler, mockStatsClient
-}
 
 func TestStatsService_GetURLStats(t *testing.T) {
 	tests := []struct {
@@ -51,7 +29,7 @@ func TestStatsService_GetURLStats(t *testing.T) {
 			queryParams: []string{"?id=1&", "date=2026-04-28"},
 			mockRequest: &pb.GetURLStatsRequest{
 				UrlId: 1,
-				Date:  "2026.04.28",
+				Date:  "2026-04-28",
 			},
 			mockResponse: &pb.GetURLStatsResponse{
 				UrlStats: []*pb.URLStats{
@@ -83,12 +61,12 @@ func TestStatsService_GetURLStats(t *testing.T) {
 			queryParams: []string{"?id=1&", "date=2026-04-28"},
 			mockRequest: &pb.GetURLStatsRequest{
 				UrlId: 1,
-				Date:  "2026.04.28",
+				Date:  "2026-04-28",
 			},
 			mockError:          assert.AnError,
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedResponse: map[string]interface{}{
-				"error": "Something went wrong",
+				"error": "something went wrong",
 			},
 			tokenExists: true,
 		},
@@ -127,7 +105,7 @@ func TestStatsService_GetURLStats(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			h, mockStatsClient := setupStatsTestHandler()
+			h, _, mockStatsClient, _ := setupTestHandler()
 			router := h.InitRoutes()
 			gin.SetMode(gin.TestMode)
 

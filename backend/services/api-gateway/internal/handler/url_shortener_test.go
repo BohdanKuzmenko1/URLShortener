@@ -1,97 +1,16 @@
-package handler
+package handler_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"fmt"
 	pb "github.com/BohdanKuzmenko1/URLShortener/proto"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"google.golang.org/grpc"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
-	"time"
 )
-
-type testTokenClaims struct {
-	jwt.StandardClaims
-	UserId int `json:"user_id"`
-}
-
-type MockUrlServiceClient struct {
-	mock.Mock
-}
-
-func (m *MockUrlServiceClient) GetURL(ctx context.Context, in *pb.GetURLRequest, opts ...grpc.CallOption) (*pb.GetURLResponse, error) {
-	args := m.Called(ctx, in)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*pb.GetURLResponse), args.Error(1)
-}
-
-func (m *MockUrlServiceClient) CreateShortURL(ctx context.Context, in *pb.CreateShortUrlRequest, opts ...grpc.CallOption) (*pb.CreateShortUrlResponse, error) {
-	args := m.Called(ctx, in)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*pb.CreateShortUrlResponse), args.Error(1)
-}
-
-func (m *MockUrlServiceClient) ResolveSlug(ctx context.Context, in *pb.ResolveSlugRequest, opts ...grpc.CallOption) (*pb.ResolveSlugResponse, error) {
-	args := m.Called(ctx, in)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*pb.ResolveSlugResponse), args.Error(1)
-}
-
-func setupURLTestHandler() (*Handler, *MockUrlServiceClient) {
-	mockURLClient := new(MockUrlServiceClient)
-	mockAuthClient := new(MockAuthServiceClient)
-	mockStatsClient := new(MockStatsServiceClient)
-	handler := NewHandler(mockURLClient, mockAuthClient, mockStatsClient)
-	return handler, mockURLClient
-}
-
-func generateToken(userId int, isExpired bool) (string, error) {
-	if isExpired {
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &testTokenClaims{
-			jwt.StandardClaims{
-				ExpiresAt: time.Now().Add(-24 * time.Hour).Unix(),
-				IssuedAt:  time.Now().Add(-48 * time.Hour).Unix(),
-			},
-			userId,
-		})
-
-		signedToken, err := token.SignedString([]byte(os.Getenv("JWT_SIGNING_KEY")))
-		if err != nil {
-			return "", err
-		}
-
-		return fmt.Sprintf("Bearer %s", signedToken), nil
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &testTokenClaims{
-		jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
-			IssuedAt:  time.Now().Unix(),
-		},
-		userId,
-	})
-
-	signedToken, err := token.SignedString([]byte(os.Getenv("JWT_SIGNING_KEY")))
-	if err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf("Bearer %s", signedToken), nil
-}
 
 func TestURLShortenerService_ShortenURL(t *testing.T) {
 	tests := []struct {
@@ -145,7 +64,7 @@ func TestURLShortenerService_ShortenURL(t *testing.T) {
 			mockError:          assert.AnError,
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedResponse: map[string]interface{}{
-				"error": "failed to create short URL",
+				"error": "something went wrong",
 			},
 			tokenExists: true,
 		},
@@ -188,7 +107,7 @@ func TestURLShortenerService_ShortenURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			h, mockURLClient := setupURLTestHandler()
+			h, mockURLClient, _, _ := setupTestHandler()
 			router := h.InitRoutes()
 			gin.SetMode(gin.TestMode)
 
@@ -265,7 +184,7 @@ func TestURLShortenerService_ResolveSlug(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			h, mockURLClient := setupURLTestHandler()
+			h, mockURLClient, _, _ := setupTestHandler()
 			router := h.InitRoutes()
 			gin.SetMode(gin.TestMode)
 

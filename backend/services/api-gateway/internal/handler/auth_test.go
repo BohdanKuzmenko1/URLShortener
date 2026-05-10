@@ -1,71 +1,17 @@
-package handler
+package handler_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	pb "github.com/BohdanKuzmenko1/URLShortener/proto"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"google.golang.org/grpc"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
-
-type MockAuthServiceClient struct {
-	mock.Mock
-}
-
-func (m *MockAuthServiceClient) Register(ctx context.Context, in *pb.RegisterRequest, opts ...grpc.CallOption) (*pb.RegisterResponse, error) {
-	args := m.Called(ctx, in)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*pb.RegisterResponse), args.Error(1)
-}
-
-func (m *MockAuthServiceClient) Login(ctx context.Context, in *pb.LoginRequest, opts ...grpc.CallOption) (*pb.LoginResponse, error) {
-	args := m.Called(ctx, in)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*pb.LoginResponse), args.Error(1)
-}
-
-func (m *MockAuthServiceClient) RefreshToken(ctx context.Context, in *pb.RefreshRequest, opts ...grpc.CallOption) (*pb.RefreshResponse, error) {
-	args := m.Called(ctx, in)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*pb.RefreshResponse), args.Error(1)
-}
-
-func (m *MockAuthServiceClient) Logout(ctx context.Context, in *pb.LogoutRequest, opts ...grpc.CallOption) (*pb.LogoutResponse, error) {
-	args := m.Called(ctx, in)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*pb.LogoutResponse), args.Error(1)
-}
-
-func setupAuthTestHandler() (*Handler, *MockAuthServiceClient) {
-	mockURLClient := new(MockUrlServiceClient)
-	mockAuthClient := new(MockAuthServiceClient)
-	mockStatsClient := new(MockStatsServiceClient)
-	handler := NewHandler(mockURLClient, mockAuthClient, mockStatsClient)
-	return handler, mockAuthClient
-}
-
-func parseCookies(response *http.Response) map[string]*http.Cookie {
-	cookies := make(map[string]*http.Cookie)
-	for _, cookie := range response.Cookies() {
-		cookies[cookie.Name] = cookie
-	}
-	return cookies
-}
 
 func TestAuthService_Register(t *testing.T) {
 	tests := []struct {
@@ -165,7 +111,7 @@ func TestAuthService_Register(t *testing.T) {
 			mockError:          assert.AnError,
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedResponse: map[string]interface{}{
-				"error": "assert.AnError general error for testing",
+				"error": "something went wrong",
 			},
 		},
 	}
@@ -173,7 +119,7 @@ func TestAuthService_Register(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			h, mockAuthClient := setupAuthTestHandler()
+			h, _, _, mockAuthClient := setupTestHandler()
 			router := h.InitRoutes()
 			gin.SetMode(gin.TestMode)
 
@@ -341,7 +287,7 @@ func TestAuthService_Login(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, mockAuthClient := setupAuthTestHandler()
+			h, _, _, mockAuthClient := setupTestHandler()
 			router := h.InitRoutes()
 			gin.SetMode(gin.TestMode)
 
@@ -484,7 +430,7 @@ func TestAuthService_RefreshToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, mockAuthClient := setupAuthTestHandler()
+			h, _, _, mockAuthClient := setupTestHandler()
 			router := h.InitRoutes()
 			gin.SetMode(gin.TestMode)
 
@@ -597,7 +543,7 @@ func TestAuthService_Logout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, mockAuthClient := setupAuthTestHandler()
+			h, _, _, mockAuthClient := setupTestHandler()
 			router := h.InitRoutes()
 
 			if tt.cookieBefore != nil && tt.cookieBefore.Name == "refresh_token" {

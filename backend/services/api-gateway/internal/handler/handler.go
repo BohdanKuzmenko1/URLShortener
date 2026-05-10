@@ -65,7 +65,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 		stats := api.Group("/url-stats")
 		stats.Use(middleware.AuthMiddleware())
 		{
-			stats.GET("", h.GetURLStats) // /api/url-stats?url_id=123&date=2026-03-10
+			stats.GET("", h.GetURLStats) // /api/url-stats?id=123&date=2026-03-10
 		}
 
 		auth := api.Group("/auth")

@@ -49,7 +49,6 @@ func main() {
 	<-quit
 
 	logrus.Info("API Gateway shutting down...")
-	clients.Close()
 }
 
 func initConfig() error {

@@ -49,8 +49,12 @@ func (h *Handler) GetURLStats(c *gin.Context) {
 	})
 
 	if err != nil {
-		logrus.Error(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Something went wrong"})
+		logrus.WithFields(logrus.Fields{
+			"url_id": urlId,
+			"date":   date,
+			"error":  err.Error(),
+		}).Error("failed to get url stats")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "something went wrong"})
 		return
 	}
 

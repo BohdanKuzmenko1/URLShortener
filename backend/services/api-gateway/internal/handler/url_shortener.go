@@ -2,9 +2,9 @@ package handler
 
 import (
 	"context"
-	"fmt"
 	pb "github.com/BohdanKuzmenko1/URLShortener/proto"
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc/metadata"
 	"net/http"
@@ -43,7 +43,11 @@ func (h *Handler) ShortenURL(c *gin.Context) {
 		Slug:      req.Slug,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create short URL"})
+		logrus.WithFields(logrus.Fields{
+			"target_url": req.TargetURL,
+			"error":      err.Error(),
+		}).Error("failed to create short URL")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "something went wrong"})
 		return
 	}
 
@@ -73,7 +77,7 @@ func (h *Handler) ResolveSlug(c *gin.Context) {
 	})
 
 	if err != nil {
-		fmt.Printf("Failed to resolve slug %s: %v\n", slug, err)
+		logrus.WithField("slug", slug).Error("failed to resolve slug")
 		c.Redirect(http.StatusMovedPermanently, viper.GetString("frontend.homepage"))
 		return
 	}

@@ -6,13 +6,17 @@ import (
 	"github.com/BohdanKuzmenko1/URLShortener/services/auth-service/internal/repository"
 	"github.com/BohdanKuzmenko1/URLShortener/services/auth-service/internal/server"
 	"github.com/BohdanKuzmenko1/URLShortener/services/auth-service/internal/service"
+	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -29,6 +33,12 @@ func main() {
 	if err != nil {
 		logrus.Fatal(err)
 	}
+	defer func(redisClient *redis.Client) {
+		err := redisClient.Close()
+		if err != nil {
+			logrus.Fatalf("failed to to close redis connection: %v", err)
+		}
+	}(redisClient)
 
 	postgres, err := repository.NewPostgresDB(repository.Config{
 		Host:     viper.GetString("postgres.host"),
@@ -41,6 +51,12 @@ func main() {
 	if err != nil {
 		logrus.Fatalf("failed to connect to database: %v", err)
 	}
+	defer func(postgres *sqlx.DB) {
+		err := postgres.Close()
+		if err != nil {
+			logrus.Fatalf("failed to close postgres connection: %v", err)
+		}
+	}(postgres)
 
 	lis, err := net.Listen("tcp", viper.GetString("auth-service.port"))
 	if err != nil {
@@ -54,9 +70,18 @@ func main() {
 	pb.RegisterAuthServiceServer(s, server.NewAuthServer(authService))
 
 	logrus.Infof("Auth Service is running on port %s...", viper.GetString("auth-service.port"))
-	if err := s.Serve(lis); err != nil {
-		logrus.Fatalf("failed to serve: %v", err)
-	}
+	go func() {
+		if err := s.Serve(lis); err != nil {
+			logrus.Fatalf("failed to serve: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
+	<-quit
+
+	logrus.Info("Auth Service shutting down...")
+	s.GracefulStop()
 }
 
 // initConfig loads the application configuration from the configs/config file

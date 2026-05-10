@@ -13,6 +13,8 @@ WORKDIR /app/backend/services/api-gateway
 
 COPY ../../../backend/shared/ ./shared/
 
+RUN go test ./... -v
+
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-w -s" \
     -o /app/bin/api-gateway \
