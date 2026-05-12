@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+// TODO: Implement wrapper storage for redis to simplify tests and their clarity
+
 const (
 	lruTTL          = 10 * time.Minute
 	lruSize         = 1_000

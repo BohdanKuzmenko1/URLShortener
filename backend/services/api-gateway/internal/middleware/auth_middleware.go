@@ -6,15 +6,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
 	"net/http"
-	"os"
 	"strings"
 )
 
 // AuthMiddleware validates the Bearer JWT token from the Authorization header.
 // On success, it sets "userId" in the gin context for use by downstream handlers.
-func AuthMiddleware() gin.HandlerFunc {
-	signingKey := []byte(os.Getenv("JWT_SIGNING_KEY"))
-
+func AuthMiddleware(signingKey []byte) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {

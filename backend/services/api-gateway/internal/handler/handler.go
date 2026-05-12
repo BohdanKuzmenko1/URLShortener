@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 	"net/http"
+	"os"
 )
 
 // Handler holds gRPC clients for each downstream microservice
@@ -47,6 +48,8 @@ func NewHandler(
 //	POST   /api/auth/refresh-token       — rotates the token pair using the refresh token cookie
 //	DELETE /api/auth/logout              — invalidates the refresh token and clears the cookie
 func (h *Handler) InitRoutes() *gin.Engine {
+	signingKey := []byte(os.Getenv("JWT_SIGNING_KEY"))
+
 	router := gin.New()
 
 	router.GET("/:slug", h.ResolveSlug)
@@ -57,13 +60,13 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	api := router.Group("/api")
 	{
 		url := api.Group("/url")
-		url.Use(middleware.AuthMiddleware())
+		url.Use(middleware.AuthMiddleware(signingKey))
 		{
 			url.POST("/shorten", h.ShortenURL)
 		}
 
 		stats := api.Group("/url-stats")
-		stats.Use(middleware.AuthMiddleware())
+		stats.Use(middleware.AuthMiddleware(signingKey))
 		{
 			stats.GET("", h.GetURLStats) // /api/url-stats?id=123&date=2026-03-10
 		}

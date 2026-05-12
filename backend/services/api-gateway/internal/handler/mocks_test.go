@@ -7,6 +7,9 @@ import (
 	"google.golang.org/grpc"
 )
 
+// ---------------------------------------------------------------------------
+// Mock: AuthServiceClient
+// ---------------------------------------------------------------------------
 type MockAuthServiceClient struct {
 	mock.Mock
 }
@@ -43,6 +46,9 @@ func (m *MockAuthServiceClient) Logout(ctx context.Context, in *pb.LogoutRequest
 	return args.Get(0).(*pb.LogoutResponse), args.Error(1)
 }
 
+// ---------------------------------------------------------------------------
+// Mock: StatsServiceClient
+// ---------------------------------------------------------------------------
 type MockStatsServiceClient struct {
 	mock.Mock
 }
@@ -55,6 +61,9 @@ func (m *MockStatsServiceClient) GetURLStats(ctx context.Context, in *pb.GetURLS
 	return args.Get(0).(*pb.GetURLStatsResponse), args.Error(1)
 }
 
+// ---------------------------------------------------------------------------
+// Mock: URLServiceClient
+// ---------------------------------------------------------------------------
 type MockUrlServiceClient struct {
 	mock.Mock
 }

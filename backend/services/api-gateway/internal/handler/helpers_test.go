@@ -13,6 +13,10 @@ import (
 
 const testSigningKey = "test-secret-key"
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 func TestMain(m *testing.M) {
 	err := os.Setenv("JWT_SIGNING_KEY", testSigningKey)
 	if err != nil {

@@ -19,7 +19,7 @@ const testSigningKey = "test-secret-key"
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(middleware.AuthMiddleware())
+	router.Use(middleware.AuthMiddleware([]byte(testSigningKey)))
 	router.GET("/protected", func(c *gin.Context) {
 		userId, _ := c.Get("userId")
 		c.JSON(http.StatusOK, gin.H{"userId": userId})
@@ -129,7 +129,7 @@ func TestAuthMiddleware_SetsUserIdInContext(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(middleware.AuthMiddleware())
+	router.Use(middleware.AuthMiddleware([]byte(testSigningKey)))
 
 	var capturedUserId interface{}
 
@@ -154,7 +154,7 @@ func TestAuthMiddleware_BlocksWithoutToken(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(middleware.AuthMiddleware())
+	router.Use(middleware.AuthMiddleware([]byte(testSigningKey)))
 
 	handlerCalled := false
 	router.GET("/protected", func(c *gin.Context) {

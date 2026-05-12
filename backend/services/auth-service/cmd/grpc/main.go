@@ -2,10 +2,10 @@ package main
 
 import (
 	pb "github.com/BohdanKuzmenko1/URLShortener/proto"
-	"github.com/BohdanKuzmenko1/URLShortener/services/auth-service/internal/client"
 	"github.com/BohdanKuzmenko1/URLShortener/services/auth-service/internal/repository"
 	"github.com/BohdanKuzmenko1/URLShortener/services/auth-service/internal/server"
 	"github.com/BohdanKuzmenko1/URLShortener/services/auth-service/internal/service"
+	"github.com/BohdanKuzmenko1/URLShortener/services/auth-service/internal/storage"
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -27,7 +27,7 @@ func main() {
 		logrus.Fatalf("an error loading env variables: %s", err.Error())
 	}
 
-	redisClient, err := client.NewClient(client.RedisConfig{
+	redisClient, err := storage.NewRedisClient(storage.RedisConfig{
 		Addr: viper.GetString("redis.address"),
 	})
 	if err != nil {
@@ -63,8 +63,9 @@ func main() {
 		logrus.Fatalf("failed to listen: %v", err)
 	}
 
-	urlRepo := repository.NewAuthRepository(postgres)
-	authService := service.NewAuthService(urlRepo, redisClient)
+	authRepo := repository.NewAuthRepository(postgres)
+	authStorage := storage.NewAuthStorage(redisClient)
+	authService := service.NewAuthService(authRepo, authStorage)
 
 	s := grpc.NewServer()
 	pb.RegisterAuthServiceServer(s, server.NewAuthServer(authService))

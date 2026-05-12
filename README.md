@@ -11,17 +11,16 @@ Soon...
 - REST HTTP server — single entry point for all client requests
 - Routes requests to internal gRPC services
 - JWT authentication middleware
-- Rate limiting middleware
 
 ### Auth Service
 - User registration and login
 - JWT token generation and validation
-- Redis for token storage and blacklisting
+- Redis for token storage
 
 ### URL Service
 - URL shortening with slug generation
 - Redirect handling
-- Redis caching for fast lookups
+- Redis and LRU caching for fast lookups
 - Publishes redirect events to Kafka
 
 ### Stats Service (legacy)
@@ -124,12 +123,10 @@ Stats service was optimized through several iterations:
 | Optimization | Throughput |
 |-------------|------------|
 | Baseline (single INSERT per event) | 20 events/sec |
-| Kafka partitions 1 → 8 | 160 events/sec |
 | Batch processing (500 events/batch) | 4,000 events/sec |
 | Aggregated schema (UPSERT) | 16,400 events/sec |
 
 Key optimizations:
-- **Kafka partitioning** — 8 partitions with consumer pool
 - **Batch processing** — collect 500 events then bulk insert
 - **In-memory aggregation** — reduce DB writes by grouping `(url_id, date, country, device)`
 - **PostgreSQL UPSERT** — single query handles both insert and update

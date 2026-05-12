@@ -1,4 +1,4 @@
-package client
+package storage
 
 import (
 	"context"
@@ -19,7 +19,7 @@ type RedisConfig struct {
 // NewClient creates and returns a new Redis client using the provided configuration.
 // It verifies the connection with a 5-second timeout ping.
 // Returns an error if the connection cannot be established.
-func NewClient(cfg RedisConfig) (*redis.Client, error) {
+func NewRedisClient(cfg RedisConfig) (*redis.Client, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     cfg.Addr,
 		Password: cfg.Password,
