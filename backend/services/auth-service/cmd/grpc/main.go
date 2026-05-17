@@ -24,19 +24,18 @@ func main() {
 		logrus.Fatalf("an error initializing configs: %s", err.Error())
 	}
 	if err := godotenv.Load(); err != nil {
-		logrus.Fatalf("an error loading env variables: %s", err.Error())
+		logrus.Warnf(".env file not found, using environment variables: %s", err.Error())
 	}
 
 	redisClient, err := storage.NewRedisClient(storage.RedisConfig{
 		Addr: viper.GetString("redis.address"),
 	})
 	if err != nil {
-		logrus.Fatal(err)
+		logrus.Fatalf("failed to connect to redis: %v", err)
 	}
-	defer func(redisClient *redis.Client) {
-		err := redisClient.Close()
-		if err != nil {
-			logrus.Fatalf("failed to to close redis connection: %v", err)
+	defer func(client *redis.Client) {
+		if err := client.Close(); err != nil {
+			logrus.Errorf("failed to close redis connection: %v", err)
 		}
 	}(redisClient)
 
@@ -51,10 +50,9 @@ func main() {
 	if err != nil {
 		logrus.Fatalf("failed to connect to database: %v", err)
 	}
-	defer func(postgres *sqlx.DB) {
-		err := postgres.Close()
-		if err != nil {
-			logrus.Fatalf("failed to close postgres connection: %v", err)
+	defer func(db *sqlx.DB) {
+		if err := db.Close(); err != nil {
+			logrus.Errorf("failed to close postgres connection: %v", err)
 		}
 	}(postgres)
 
@@ -71,6 +69,7 @@ func main() {
 	pb.RegisterAuthServiceServer(s, server.NewAuthServer(authService))
 
 	logrus.Infof("Auth Service is running on port %s...", viper.GetString("auth-service.port"))
+
 	go func() {
 		if err := s.Serve(lis); err != nil {
 			logrus.Fatalf("failed to serve: %v", err)

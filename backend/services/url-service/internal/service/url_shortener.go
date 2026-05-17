@@ -18,6 +18,7 @@ import (
 // TODO: Implement wrapper storage for redis to simplify tests and their clarity
 
 const (
+	redisTTL        = 30 * time.Minute
 	lruTTL          = 10 * time.Minute
 	lruSize         = 1_000
 	eventWorkers    = 20
@@ -123,14 +124,17 @@ func (u *urlShortenerService) ResolveSlug(ctx context.Context, redirect internal
 		if !ok {
 			return "", fmt.Errorf("invalid id type in redis")
 		}
+
 		urlID, err = strconv.Atoi(idStr)
 		if err != nil {
 			return "", err
 		}
+
 		targetStr, ok := res[1].(string)
 		if !ok {
 			return "", fmt.Errorf("invalid target type in redis")
 		}
+
 		targetURL = targetStr
 	} else {
 		// Get target URL from database if LRU and Redis don't have such slug
@@ -145,7 +149,7 @@ func (u *urlShortenerService) ResolveSlug(ctx context.Context, redirect internal
 			"id":     urlID,
 			"target": targetURL,
 		})
-		pipe.Expire(ctx, key, 30*time.Minute)
+		pipe.Expire(ctx, key, redisTTL)
 		if _, err = pipe.Exec(ctx); err != nil {
 			logrus.Error("redis cache write failed: ", err)
 		}

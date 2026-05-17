@@ -3,10 +3,10 @@ package main
 import (
 	pb "github.com/BohdanKuzmenko1/URLShortener/proto"
 	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/broker/kafka"
-	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/client"
 	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/repository"
 	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/server"
 	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/service"
+	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/storage"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/sirupsen/logrus"
@@ -37,7 +37,7 @@ func main() {
 		logrus.Fatalf("an error initializing kafka client: %s", err.Error())
 	}
 
-	redisClient, err := client.NewClient(client.RedisConfig{
+	redisClient, err := storage.NewClient(storage.RedisConfig{
 		Addr:     viper.GetString("redis.address"),
 		Password: "",
 		DB:       0,
