@@ -2,17 +2,25 @@ package storage
 
 import (
 	"context"
-	"github.com/redis/go-redis/v9"
+	"errors"
+	"time"
 )
 
+const (
+	lruSize  = 1_000
+	lruTTL   = 10 * time.Minute
+	redisTTL = 30 * time.Minute
+)
+
+var ErrNotFound = errors.New("not found")
+
+type CachedURL struct {
+	ID        int
+	Target    string
+	ExpiresAt time.Time
+}
+
 type URLShortenerStorage interface {
-	GetCachedURL(ctx context.Context, urlID int) (string, error)
-}
-
-type urlShortenerStorage struct {
-	redis *redis.Client
-}
-
-func newUrlShortenerStorage(redis *redis.Client) URLShortenerStorage {
-	return &urlShortenerStorage{redis: redis}
+	Get(ctx context.Context, slug string) (CachedURL, error)
+	Set(ctx context.Context, urlID int, target, slug string)
 }

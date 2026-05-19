@@ -1,5 +1,7 @@
 package broker
 
+import "context"
+
 type RedirectEvent struct {
 	URLId     int    `json:"url_id"`
 	ClientIP  string `json:"client_ip"`
@@ -11,5 +13,5 @@ type RedirectEvent struct {
 }
 
 type RedirectProducer interface {
-	SendRedirect(event RedirectEvent, slug string) error
+	SendRedirect(ctx context.Context, event RedirectEvent, slug string) error
 }

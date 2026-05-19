@@ -1,11 +1,10 @@
-package kafka
+package broker
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/broker"
 	"github.com/segmentio/kafka-go"
 	"github.com/sirupsen/logrus"
 	"os"
@@ -44,7 +43,7 @@ type Producer struct {
 	writer *kafka.Writer
 }
 
-func (p *Producer) SendRedirect(redirectEvent broker.RedirectEvent, slug string) error {
+func (p *Producer) SendRedirect(ctx context.Context, redirectEvent RedirectEvent, slug string) error {
 	if p.writer == nil {
 		return errors.New("kafka writer is not initialized")
 	}
@@ -59,7 +58,9 @@ func (p *Producer) SendRedirect(redirectEvent broker.RedirectEvent, slug string)
 		Value: value,
 	}
 
-	return p.writer.WriteMessages(context.Background(), msg)
+	p.writer.WriteMessages(ctx, msg)
+
+	return nil
 }
 
 func CreateTopic(broker string, topic string, partitions int) error {

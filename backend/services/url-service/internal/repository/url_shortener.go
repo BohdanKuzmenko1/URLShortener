@@ -9,6 +9,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+var ErrNotFound = errors.New("url not found")
+
 type urlShortenerRepository struct {
 	db *sqlx.DB
 }
@@ -57,7 +59,7 @@ func (U urlShortenerRepository) GetURLBySlug(ctx context.Context, slug string) (
 	err := U.db.QueryRowContext(ctx, query, slug).Scan(&id, &targetURL)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, "", fmt.Errorf("URL with slug '%s' not found", slug)
+			return 0, "", ErrNotFound
 		}
 		return 0, "", fmt.Errorf("failed to get URL: %w", err)
 	}

@@ -2,7 +2,7 @@ package main
 
 import (
 	pb "github.com/BohdanKuzmenko1/URLShortener/proto"
-	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/broker/kafka"
+	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/broker"
 	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/repository"
 	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/server"
 	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/service"
@@ -28,11 +28,11 @@ func main() {
 	}
 
 	brokerAddr := os.Getenv("KAFKA_BROKER")
-	if err := kafka.CreateTopic(brokerAddr, "redirects", 8); err != nil {
+	if err := broker.CreateTopic(brokerAddr, "redirects", 8); err != nil {
 		logrus.Fatalf("failed to create kafka topic: %s", err.Error())
 	}
 
-	producer, err := kafka.NewProducer()
+	producer, err := broker.NewProducer()
 	if err != nil {
 		logrus.Fatalf("an error initializing kafka client: %s", err.Error())
 	}
@@ -64,8 +64,9 @@ func main() {
 	}
 
 	urlRepo := repository.NewURLShortenerRepository(postgres)
-	urlService := service.NewURLShortenerService(urlRepo, producer, redisClient)
-	defer urlService.Close()
+	redisStorage := storage.NewRedisStorage(redisClient)
+	lruStorage := storage.NewLRUStorage()
+	urlService := service.NewURLShortenerService(urlRepo, producer, redisStorage, lruStorage)
 
 	s := grpc.NewServer()
 	pb.RegisterURLServiceServer(s, server.NewURLServer(urlService))

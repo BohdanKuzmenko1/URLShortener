@@ -23,11 +23,7 @@ Soon...
 - Redis and LRU caching for fast lookups
 - Publishes redirect events to Kafka
 
-### Stats Service (legacy)
-- Reads redirect events from Kafka
-- Stores raw redirect data in PostgreSQL
-
-### Stats Service New
+### Stats Service
 - Reads redirect events from Kafka with **batch processing**
 - In-memory aggregation before database write
 - Bot detection via User-Agent parsing
@@ -57,8 +53,7 @@ Soon...
 │   ├── api-gateway/        # REST API gateway
 │   ├── auth-service/       # Authentication & authorization
 │   ├── url-service/        # URL shortening & redirects
-│   ├── stats-service/      # Legacy stats (raw redirects)
-│   └── stats-service-new/  # Optimized stats (aggregated)
+│   ├── stats-service/      # Optimized stats
 ├── shared/                 # Shared types (JWT claims)
 ├── deploy/
 │   ├── docker-compose.yml
@@ -97,24 +92,23 @@ migrate -path deploy/migrations -database "postgres://user:password@localhost:54
 ## API Endpoints
 
 ### Auth
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/auth/sign-up` | Register new user |
-| POST | `/auth/sign-in` | Login, returns JWT tokens |
-| POST | `/auth/refresh` | Refresh access token |
-
+| Method | Endpoint             | Description               |
+|--------|----------------------|---------------------------|
+| POST | `/api/auth/register` | Register new user         |
+| POST | `/api/auth/login`  | Login, returns JWT tokens |
+| POST | `/api/auth/refresh-token`  | Refresh access token      |
+|DELETE| `/api/auth/logout`   | Delete refresh token      |
 ### URLs
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/urls` | Create short URL |
-| GET | `/:slug` | Redirect to original URL |
-| GET | `/urls` | Get all user URLs |
-| DELETE | `/urls/:id` | Delete URL |
-
+| Method | Endpoint            | Description |
+|--------|---------------------|-------------|
+| POST | `/api/url/shorten` | Create short URL |
+| GET | `/:slug`            | Redirect to original URL |
+| GET | `/api/urls`         | Get all user URLs |
+DELETE /api/auth/logout              — invalidates the refresh token and clears the cookie
 ### Stats
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/stats/:url_id` | Get click statistics for URL |
+| Method | Endpoint                   | Description |
+|--------|----------------------------|-------------|
+| GET | `/api/url-stats/?id=&date` | Get click statistics for URL |
 
 ## Performance
 
@@ -157,9 +151,6 @@ url-service:
   port: :50051
 
 stats-service:
-  port: :50053
-
-stats-service-new:
   port: :50054
 ```
 
