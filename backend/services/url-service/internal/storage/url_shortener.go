@@ -9,7 +9,7 @@ import (
 const (
 	lruSize  = 1_000
 	lruTTL   = 10 * time.Minute
-	redisTTL = 30 * time.Minute
+	RedisTTL = 30 * time.Minute
 )
 
 var ErrNotFound = errors.New("not found")
@@ -22,5 +22,5 @@ type CachedURL struct {
 
 type URLShortenerStorage interface {
 	Get(ctx context.Context, slug string) (CachedURL, error)
-	Set(ctx context.Context, urlID int, target, slug string)
+	Set(ctx context.Context, urlID int, target, slug string) error
 }

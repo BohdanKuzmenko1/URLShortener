@@ -11,6 +11,10 @@ type lruStorage struct {
 }
 
 func (l lruStorage) Get(ctx context.Context, slug string) (CachedURL, error) {
+	if err := ctx.Err(); err != nil {
+		return CachedURL{}, err
+	}
+
 	if cached, ok := l.lru.Get(slug); ok && time.Now().Before(cached.ExpiresAt) {
 		return cached, nil
 	}
@@ -18,7 +22,11 @@ func (l lruStorage) Get(ctx context.Context, slug string) (CachedURL, error) {
 	return CachedURL{}, ErrNotFound
 }
 
-func (l lruStorage) Set(ctx context.Context, urlID int, target, slug string) {
+func (l lruStorage) Set(ctx context.Context, urlID int, target, slug string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	cached := CachedURL{
 		ID:        urlID,
 		Target:    target,
@@ -26,6 +34,8 @@ func (l lruStorage) Set(ctx context.Context, urlID int, target, slug string) {
 	}
 
 	l.lru.Add(slug, cached)
+
+	return nil
 }
 
 func NewLRUStorage() URLShortenerStorage {

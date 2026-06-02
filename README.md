@@ -29,7 +29,7 @@ Soon...
 - Bot detection via User-Agent parsing
 - Device detection (mobile/tablet/desktop)
 - Aggregated statistics stored in PostgreSQL
-- **110x throughput improvement** over legacy service (150 → 16,400 events/sec)
+- **150x throughput improvement** over legacy service (150 → 23,000 events/sec)
 
 ## Tech Stack
 
@@ -92,19 +92,18 @@ migrate -path deploy/migrations -database "postgres://user:password@localhost:54
 ## API Endpoints
 
 ### Auth
-| Method | Endpoint             | Description               |
-|--------|----------------------|---------------------------|
-| POST | `/api/auth/register` | Register new user         |
-| POST | `/api/auth/login`  | Login, returns JWT tokens |
-| POST | `/api/auth/refresh-token`  | Refresh access token      |
-|DELETE| `/api/auth/logout`   | Delete refresh token      |
+| Method | Endpoint                  | Description               |
+|--------|---------------------------|---------------------------|
+| POST   | `/api/auth/register`      | Register new user         |
+| POST   | `/api/auth/login`         | Login, returns JWT tokens |
+| POST   | `/api/auth/refresh-token` | Refresh access token      |
+| DELETE | `/api/auth/logout`        | Delete refresh token      |
 ### URLs
 | Method | Endpoint            | Description |
 |--------|---------------------|-------------|
 | POST | `/api/url/shorten` | Create short URL |
 | GET | `/:slug`            | Redirect to original URL |
 | GET | `/api/urls`         | Get all user URLs |
-DELETE /api/auth/logout              — invalidates the refresh token and clears the cookie
 ### Stats
 | Method | Endpoint                   | Description |
 |--------|----------------------------|-------------|
@@ -114,11 +113,11 @@ DELETE /api/auth/logout              — invalidates the refresh token and clear
 
 Stats service was optimized through several iterations:
 
-| Optimization | Throughput |
-|-------------|------------|
-| Baseline (single INSERT per event) | 20 events/sec |
-| Batch processing (500 events/batch) | 4,000 events/sec |
-| Aggregated schema (UPSERT) | 16,400 events/sec |
+| Optimization | Throughput        |
+|-------------|-------------------|
+| Baseline (single INSERT per event) | ≈20 events/sec     |
+| Batch processing (500 events/batch) | ≈4,000 events/sec  |
+| Aggregated schema (UPSERT) | ≈23,000 events/sec |
 
 Key optimizations:
 - **Batch processing** — collect 500 events then bulk insert

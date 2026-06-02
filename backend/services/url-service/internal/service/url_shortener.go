@@ -62,17 +62,14 @@ func (u *urlShortenerService) ResolveSlug(ctx context.Context, redirect internal
 		return cached.Target, nil
 	}
 
-	// If error != not found print warn log
-	if !errors.Is(err, storage.ErrNotFound) {
-		logrus.Warn("error getting cached url: ", err.Error())
-	}
-
+	// Try to get target URL from Redis
 	cached, err = u.redisStorage.Get(ctx, redirect.Slug)
 	if err == nil {
 		u.sendRedirectEvent(cached.ID, redirect)
 		return cached.Target, nil
 	}
 
+	// If error != not found print warn log
 	if !errors.Is(err, storage.ErrNotFound) {
 		logrus.Warn("error getting cached url from Redis: ", err.Error())
 	}
@@ -86,6 +83,10 @@ func (u *urlShortenerService) ResolveSlug(ctx context.Context, redirect internal
 	urlID, targetURL, err = u.repoPostgres.GetURLBySlug(ctx, redirect.Slug)
 	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		logrus.Warn("error getting cached url: ", err.Error())
+		return "", err
+	}
+
+	if errors.Is(err, repository.ErrNotFound) {
 		return "", err
 	}
 

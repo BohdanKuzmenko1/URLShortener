@@ -1,244 +1,322 @@
 package service_test
 
 import (
+	"context"
 	"errors"
 	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal"
 	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/broker"
-	_ "github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/repository"
+	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/repository"
+	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/service"
+	"github.com/BohdanKuzmenko1/URLShortener/services/url-service/internal/storage"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"strings"
 	"testing"
-	"time"
-	"unicode/utf8"
 )
 
-type MockURLShortenerRepository struct {
-	mock.Mock
-}
-
-type MockRedirectProducer struct {
-	mock.Mock
-}
-
-func (m *MockRedirectProducer) SendRedirect(event broker.RedirectEvent, slug string) error {
-	args := m.Called(event, slug)
-	return args.Error(0)
-}
-
-func (repo *MockURLShortenerRepository) AddShortURL(userId int, targetURL, slug string) error {
-	args := repo.Called(userId, targetURL, slug)
-	return args.Error(0)
-}
-
-func (repo *MockURLShortenerRepository) GetURLBySlug(slug string) (int, string, error) {
-	args := repo.Called(slug)
-	if args.Get(2) != nil {
-		return 0, "", args.Error(2)
-	}
-	return args.Get(0).(int), args.Get(1).(string), args.Error(2)
-}
-
-func (repo *MockURLShortenerRepository) GetURLByUserId(userId, urlId int) (internal.ShortURL, error) {
-	args := repo.Called(userId, urlId)
-	if args.Get(1) != nil {
-		return internal.ShortURL{}, args.Error(1)
-	}
-
-	return args.Get(0).(internal.ShortURL), args.Error(1)
-}
-
-func TestURLShortenerService_GetURLByUserId(t *testing.T) {
+func TestUrlShortenerService_GetURL(t *testing.T) {
 	tests := []struct {
-		name             string
-		userId           int
-		urlId            int
-		expectedError    error
-		expectedResponse internal.ShortURL
+		name         string
+		userID       int
+		urlID        int
+		mockResponse internal.ShortURL
+		mockError    error
 	}{
 		{
-			name:          "Success",
-			userId:        1,
-			urlId:         1,
-			expectedError: nil,
-			expectedResponse: internal.ShortURL{
+			name:   "Success",
+			userID: 1,
+			urlID:  1,
+			mockResponse: internal.ShortURL{
 				UrlId:     1,
 				Slug:      "slug",
-				TargetUrl: "http://google.com",
+				TargetUrl: "https://google.com",
 				UserId:    1,
-				CreatedAt: time.Now().Add(-24 * time.Hour).String(),
+				CreatedAt: "today",
 			},
 		},
 		{
-			name:             "Error from repository",
-			userId:           1,
-			urlId:            1,
-			expectedError:    errors.New("repository error"),
-			expectedResponse: internal.ShortURL{},
+			name:         "Error from repository",
+			userID:       1,
+			urlID:        1,
+			mockResponse: internal.ShortURL{},
+			mockError:    errors.New("some error"),
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			mockRepo := new(MockURLShortenerRepository)
-			mockProducer := new(MockRedirectProducer)
+			repoMock := new(URLShortenerRepositoryMock)
+			lruStorageMock := new(LRUStorageMock)
+			redisStorageMock := new(RedisStorageMock)
+			brokerMock := new(RedirectProducerMock)
+			testService := service.NewURLShortenerService(
+				repoMock,
+				brokerMock,
+				redisStorageMock,
+				lruStorageMock,
+			)
 
-			service := NewURLShortenerService(mockRepo, mockProducer)
-
-			mockRepo.On("GetURLByUserId", test.userId, test.urlId).Return(test.expectedResponse, test.expectedError)
+			repoMock.On("GetURLByUserId", mock.Anything, tt.userID, tt.urlID).Return(tt.mockResponse, tt.mockError)
 
 			// Action
-			result, err := service.GetURL(test.userId, test.urlId)
+			res, err := testService.GetURL(context.Background(), tt.userID, tt.urlID)
 
 			// Assert
-			assert.Equal(t, test.expectedResponse, result)
-			assert.Equal(t, test.expectedError, err)
+			if err != nil {
+				assert.Error(t, err, tt.mockError)
+				assert.Equal(t, internal.ShortURL{}, res)
+			} else {
+				assert.Equal(t, tt.mockResponse, res)
+				assert.Nil(t, err)
+			}
+
+			repoMock.AssertExpectations(t)
 		})
 	}
 }
 
-func TestURLShortenerService_GenerateShortURL(t *testing.T) {
-	viper.Set("api-gateway.baseURL", "http://localhost:8080/")
+func TestUrlShortenerService_GenerateShortURL(t *testing.T) {
+	baseURL := "http://localhost:8090/"
+	viper.Set("api-gateway.baseURL", baseURL)
 
 	tests := []struct {
-		name             string
-		userId           int
-		targetURL        string
-		slug             string
-		expectedError    error
-		expectedShortURL string
+		name         string
+		mockError    error
+		mockResponse internal.ShortURL
+		userID       int
+		targetURL    string
+		slug         string
+		expectedURL  string
 	}{
 		{
-			name:             "Success",
-			slug:             "test",
-			userId:           1,
-			expectedError:    nil,
-			targetURL:        "http://google.com",
-			expectedShortURL: viper.GetString("api-gateway.baseURL") + "test",
+			name:      "Success",
+			userID:    1,
+			targetURL: "https://google.com",
+			slug:      "slug",
+			mockResponse: internal.ShortURL{
+				UrlId:     1,
+				Slug:      "slug",
+				TargetUrl: "https://google.com",
+				UserId:    1,
+				CreatedAt: "today",
+			},
+			expectedURL: baseURL + "slug",
 		},
 		{
-			name:          "Error from repo",
-			slug:          "test",
-			userId:        1,
-			expectedError: errors.New("repo error"),
-			targetURL:     "http://google.com",
+			name:      "Success without slug specified",
+			userID:    1,
+			targetURL: "https://google.com",
+			mockResponse: internal.ShortURL{
+				UrlId:     1,
+				Slug:      "slug",
+				TargetUrl: "https://google.com",
+				UserId:    1,
+				CreatedAt: "today",
+			},
 		},
 		{
-			name:      "Success with auto-generated slug",
-			userId:    1,
-			targetURL: "http://google.com",
+			name:         "Error from repository",
+			userID:       1,
+			targetURL:    "https://google.com",
+			slug:         "slug",
+			mockResponse: internal.ShortURL{},
+			mockError:    errors.New("some error"),
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
-			mockRepo := &MockURLShortenerRepository{}
-			mockProducer := &MockRedirectProducer{}
-			service := NewURLShortenerService(mockRepo, mockProducer)
+			repoMock := new(URLShortenerRepositoryMock)
+			lruStorageMock := new(LRUStorageMock)
+			redisStorageMock := new(RedisStorageMock)
+			brokerMock := new(RedirectProducerMock)
+			testService := service.NewURLShortenerService(
+				repoMock,
+				brokerMock,
+				redisStorageMock,
+				lruStorageMock,
+			)
 
-			mockRepo.On("AddShortURL", test.userId, test.targetURL, mock.Anything).Return(test.expectedError)
+			if tt.slug == "" {
+				repoMock.
+					On("AddShortURL", mock.Anything, tt.userID, tt.targetURL, mock.AnythingOfType("string")).
+					Return(tt.mockError)
+			} else {
+				repoMock.
+					On("AddShortURL", mock.Anything, tt.userID, tt.targetURL, tt.slug).
+					Return(tt.mockError)
+			}
 
 			// Action
-			shortURL, err := service.GenerateShortURL(test.userId, test.targetURL, test.slug)
+			res, err := testService.GenerateShortURL(context.Background(), tt.userID, tt.targetURL, tt.slug)
 
 			// Assert
-			if test.slug == "" {
-				baseURLRunes := utf8.RuneCountInString(viper.GetString("api-gateway.baseURL"))
-				shortURLRunes := utf8.RuneCountInString(shortURL)
-
-				assert.Equal(t, baseURLRunes, shortURLRunes-8) // Checks if 8 runes slug was generated
+			if err != nil {
+				assert.Error(t, err, tt.mockError)
+				assert.Equal(t, tt.expectedURL, res)
+			} else {
+				if tt.slug == "" {
+					after, ok := strings.CutPrefix(res, viper.GetString("api-gateway.baseURL"))
+					assert.True(t, ok)
+					assert.Equal(t, 8, len(after))
+					assert.NoError(t, err)
+				} else {
+					assert.Equal(t, tt.expectedURL, res)
+					assert.NoError(t, err)
+				}
 			}
 
-			if test.slug != "" {
-				assert.Equal(t, test.expectedError, err)
-				assert.Equal(t, test.expectedShortURL, shortURL)
-			}
+			repoMock.AssertExpectations(t)
 		})
 	}
 }
 
 func TestUrlShortenerService_ResolveSlug(t *testing.T) {
 	tests := []struct {
-		name                  string
-		redirect              internal.Redirect
-		expectedTargetURL     string
-		expectedURLId         int
-		expectedRepoError     error
-		expectedProducerError error
+		name                 string
+		expectedErr          error
+		repoMockErr          error
+		lruMockErr           error
+		redisMockErr         error
+		urlID                int
+		redirect             internal.Redirect
+		expectedTargetURL    string
+		shouldCallLRUSet     bool
+		shouldCallRedisGet   bool
+		shouldCallRedisSet   bool
+		shouldCallRepoMock   bool
+		shouldCallBrokerMock bool
 	}{
 		{
-			name: "Success",
-			redirect: internal.Redirect{
-				Slug:      "search",
-				ClientIP:  "0.0.0.0",
-				Country:   "US",
-				Language:  "UK",
-				UserAgent: "Mozilla/5.0",
-				Referer:   "referer.com",
-			},
-			expectedTargetURL: "http://google.com",
-			expectedURLId:     1,
+			name:                 "lru hit - returns from lru cache",
+			urlID:                1,
+			redirect:             internal.Redirect{Slug: "abc123", ClientIP: "127.0.0.1"},
+			expectedTargetURL:    "https://example.com",
+			lruMockErr:           nil,
+			shouldCallBrokerMock: true,
 		},
 		{
-			name: "Repository returns error",
-			redirect: internal.Redirect{
-				Slug:      "search",
-				ClientIP:  "0.0.0.0",
-				Country:   "US",
-				Language:  "UK",
-				UserAgent: "Mozilla/5.0",
-				Referer:   "referer.com",
-			},
-			expectedTargetURL: "",
-			expectedURLId:     0,
-			expectedRepoError: errors.New("db error"),
+			name:                 "redis hit - lru miss",
+			urlID:                1,
+			redirect:             internal.Redirect{Slug: "abc123"},
+			expectedTargetURL:    "https://example.com",
+			lruMockErr:           storage.ErrNotFound,
+			redisMockErr:         nil,
+			shouldCallRedisGet:   true,
+			shouldCallBrokerMock: true,
 		},
 		{
-			name: "Producer returns error",
-			redirect: internal.Redirect{
-				Slug:      "search",
-				ClientIP:  "0.0.0.0",
-				Country:   "US",
-				Language:  "UK",
-				UserAgent: "Mozilla/5.0",
-				Referer:   "referer.com",
-			},
-			expectedTargetURL:     "http://google.com",
-			expectedURLId:         1,
-			expectedProducerError: errors.New("producer error"),
+			name:                 "db hit - lru and redis miss",
+			urlID:                1,
+			redirect:             internal.Redirect{Slug: "abc123"},
+			expectedTargetURL:    "https://example.com",
+			lruMockErr:           storage.ErrNotFound,
+			redisMockErr:         storage.ErrNotFound,
+			shouldCallRedisGet:   true,
+			shouldCallRepoMock:   true,
+			shouldCallLRUSet:     true,
+			shouldCallRedisSet:   true,
+			shouldCallBrokerMock: true,
+		},
+		{
+			name:               "db not found - returns error",
+			redirect:           internal.Redirect{Slug: "notexist"},
+			lruMockErr:         storage.ErrNotFound,
+			redisMockErr:       storage.ErrNotFound,
+			repoMockErr:        repository.ErrNotFound,
+			shouldCallRedisGet: true,
+			shouldCallRepoMock: true,
+			expectedErr:        repository.ErrNotFound,
+		},
+		{
+			name:               "db error - returns error",
+			redirect:           internal.Redirect{Slug: "abc123"},
+			lruMockErr:         storage.ErrNotFound,
+			redisMockErr:       storage.ErrNotFound,
+			repoMockErr:        errors.New("db connection error"),
+			shouldCallRedisGet: true,
+			shouldCallRepoMock: true,
+			expectedErr:        errors.New("db connection error"),
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			mockRepo := &MockURLShortenerRepository{}
-			mockProducer := &MockRedirectProducer{}
-			service := NewURLShortenerService(mockRepo, mockProducer)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			repoMock := new(URLShortenerRepositoryMock)
+			lruStorageMock := new(LRUStorageMock)
+			redisStorageMock := new(RedisStorageMock)
+			brokerMock := new(RedirectProducerMock)
 
-			mockRepo.
-				On("GetURLBySlug", test.redirect.Slug).
-				Return(test.expectedURLId, test.expectedTargetURL, test.expectedRepoError)
+			repoMock.Test(t)
+			lruStorageMock.Test(t)
+			redisStorageMock.Test(t)
+			brokerMock.Test(t)
 
-			if test.expectedRepoError == nil {
-				mockProducer.
-					On("SendRedirect", mock.Anything, test.redirect.Slug).
-					Return(test.expectedProducerError)
+			testService := service.NewURLShortenerService(
+				repoMock,
+				brokerMock,
+				redisStorageMock,
+				lruStorageMock,
+			)
+
+			lruStorageMock.On("Get", mock.Anything, tt.redirect.Slug).
+				Return(storage.CachedURL{ID: tt.urlID, Target: tt.expectedTargetURL}, tt.lruMockErr)
+
+			if tt.shouldCallRedisGet {
+				redisStorageMock.On("Get", mock.Anything, tt.redirect.Slug).
+					Return(storage.CachedURL{ID: tt.urlID, Target: tt.expectedTargetURL}, tt.redisMockErr)
 			}
 
-			result, err := service.ResolveSlug(test.redirect)
-
-			if test.expectedRepoError != nil {
-				assert.Equal(t, test.expectedRepoError, err)
-				return
+			if tt.shouldCallRepoMock {
+				repoMock.On("GetURLBySlug", mock.Anything, tt.redirect.Slug).
+					Return(tt.urlID, tt.expectedTargetURL, tt.repoMockErr)
 			}
 
-			assert.NoError(t, err)
-			assert.Equal(t, test.expectedTargetURL, result)
+			if tt.shouldCallLRUSet {
+				lruStorageMock.On("Set", mock.Anything, tt.urlID, tt.expectedTargetURL, tt.redirect.Slug).
+					Return()
+			}
 
-			mockRepo.AssertExpectations(t)
-			mockProducer.AssertExpectations(t)
+			if tt.shouldCallRedisSet {
+				redisStorageMock.On("Set", mock.Anything, tt.urlID, tt.expectedTargetURL, tt.redirect.Slug).
+					Return()
+			}
+
+			if tt.shouldCallBrokerMock {
+				brokerMock.On("SendRedirect", mock.Anything, mock.MatchedBy(func(e broker.RedirectEvent) bool {
+					return e.URLId == tt.urlID &&
+						e.ClientIP == tt.redirect.ClientIP &&
+						e.Referer == tt.redirect.Referer &&
+						e.UserAgent == tt.redirect.UserAgent
+				}), tt.redirect.Slug).Return(nil)
+			}
+
+			// Action
+			res, err := testService.ResolveSlug(context.Background(), tt.redirect)
+
+			// Assert
+			if tt.expectedErr != nil {
+				// Use ErrorIs only for sentinel errors (e.g. repository.ErrNotFound)
+				// Use EqualError for dynamically created errors
+				if errors.Is(tt.expectedErr, repository.ErrNotFound) || errors.Is(tt.expectedErr, storage.ErrNotFound) {
+					assert.ErrorIs(t, err, tt.expectedErr)
+				} else {
+					assert.EqualError(t, err, tt.expectedErr.Error())
+				}
+				assert.Empty(t, res)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedTargetURL, res)
+			}
+
+			repoMock.AssertExpectations(t)
+			lruStorageMock.AssertExpectations(t)
+			redisStorageMock.AssertExpectations(t)
+			brokerMock.AssertExpectations(t)
 		})
 	}
 }

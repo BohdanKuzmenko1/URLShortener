@@ -50,7 +50,7 @@ func (r redisStorage) Get(ctx context.Context, slug string) (CachedURL, error) {
 	return CachedURL{}, ErrNotFound
 }
 
-func (r redisStorage) Set(ctx context.Context, urlID int, target, slug string) {
+func (r redisStorage) Set(ctx context.Context, urlID int, target, slug string) error {
 	key := "u:" + slug
 
 	pipe := r.redis.TxPipeline()
@@ -58,10 +58,13 @@ func (r redisStorage) Set(ctx context.Context, urlID int, target, slug string) {
 		"id":     urlID,
 		"target": target,
 	})
-	pipe.Expire(ctx, key, redisTTL)
+	pipe.Expire(ctx, key, RedisTTL)
 	if _, err := pipe.Exec(ctx); err != nil {
 		logrus.Error("redis cache write failed: ", err)
+		return err
 	}
+
+	return nil
 }
 
 func NewRedisStorage(redis *redis.Client) URLShortenerStorage {

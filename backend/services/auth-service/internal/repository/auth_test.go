@@ -30,7 +30,8 @@ var testDB *sqlx.DB
 // ---------------------------------------------------------------------------
 
 func TestMain(m *testing.M) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -121,9 +122,12 @@ func seedUser(t *testing.T, email, password string) int {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
 	require.NoError(t, err, "bcrypt failed")
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	var id int
 	err = testDB.QueryRowContext(
-		context.Background(),
+		ctx,
 		"INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id",
 		email, string(hash),
 	).Scan(&id)
@@ -135,7 +139,10 @@ func seedUser(t *testing.T, email, password string) int {
 func cleanDB(t *testing.T) {
 	t.Helper()
 
-	_, err := testDB.Exec("TRUNCATE TABLE users RESTART IDENTITY CASCADE")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := testDB.ExecContext(ctx, "TRUNCATE TABLE users RESTART IDENTITY CASCADE")
 	require.NoError(t, err)
 }
 
@@ -158,12 +165,15 @@ func TestAuthRepository_Register(t *testing.T) {
 
 	authRepo := repository.NewAuthRepository(testDB)
 
-	id, err := authRepo.Register(context.Background(), email, passwordHash)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	id, err := authRepo.Register(ctx, email, passwordHash)
 	require.NoError(t, err, "register should not fail")
 	require.Greater(t, id, 0, "registered user should have valid id")
 
 	var user User
-	err = testDB.Get(&user, "SELECT * FROM users WHERE id = $1", id)
+	err = testDB.GetContext(ctx, &user, "SELECT * FROM users WHERE id = $1", id)
 	require.NoError(t, err, "registered user should exist in db")
 	require.Equal(t, email, user.Email)
 	require.Equal(t, passwordHash, user.PasswordHash)
@@ -179,10 +189,13 @@ func TestAuthRepository_Register_DuplicateEmail(t *testing.T) {
 
 	authRepo := repository.NewAuthRepository(testDB)
 
-	_, err := authRepo.Register(context.Background(), email, password)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := authRepo.Register(ctx, email, password)
 	require.NoError(t, err, "first registration should succeed")
 
-	_, err = authRepo.Register(context.Background(), email, password)
+	_, err = authRepo.Register(ctx, email, password)
 	require.Error(t, err, "duplicate email should return error")
 }
 
@@ -196,7 +209,10 @@ func TestAuthRepository_GetUserByEmail(t *testing.T) {
 
 	authRepo := repository.NewAuthRepository(testDB)
 
-	id, passwordHash, err := authRepo.GetUserByEmail(context.Background(), email)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	id, passwordHash, err := authRepo.GetUserByEmail(ctx, email)
 	require.NoError(t, err)
 	require.Equal(t, expectedID, id)
 	require.NotEmpty(t, passwordHash)
@@ -207,7 +223,10 @@ func TestAuthRepository_GetUserByEmail_NotFound(t *testing.T) {
 
 	authRepo := repository.NewAuthRepository(testDB)
 
-	_, _, err := authRepo.GetUserByEmail(context.Background(), "nonexistent@gmail.com")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, _, err := authRepo.GetUserByEmail(ctx, "nonexistent@gmail.com")
 	require.Error(t, err)
 	require.ErrorIs(t, err, sql.ErrNoRows)
 }
