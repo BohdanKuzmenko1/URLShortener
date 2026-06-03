@@ -3,8 +3,8 @@
 A high-performance URL shortening service built with a microservices architecture using Go, gRPC, Kafka, Redis, and PostgreSQL.
 
 ## Architecture
+![Architecture.png](backend/docs/Architecture.png)
 
-Soon...
 ## Services
 
 ### API Gateway
